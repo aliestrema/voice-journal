@@ -64,9 +64,9 @@ button { font: inherit; cursor: pointer; }
 .back { background: none; border: 0; font-size: 18px; color: var(--accent-dark); padding: 10px 0; min-height: 48px; }
 
 /* Home */
-.home { text-align: center; padding-top: 40px; }
+.home { text-align: center; padding-top: 24px; }
 .talk-btn {
-  width: 220px; height: 220px; margin: 34px auto 22px; border-radius: 50%;
+  width: 200px; height: 200px; margin: 22px auto 16px; border-radius: 50%;
   border: 0; background: radial-gradient(circle at 35% 30%, #d06a40, var(--accent) 60%, var(--accent-dark));
   color: #fff; font-size: 34px; font-weight: 700; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 8px;
@@ -74,7 +74,20 @@ button { font: inherit; cursor: pointer; }
 }
 .talk-btn svg { width: 64px; height: 64px; }
 .talk-btn:active { transform: scale(.97); }
-.hint { color: var(--muted); font-size: 19px; }
+.hint { color: var(--muted); font-size: 18px; margin: 10px 0 0; }
+.write-btn { min-height: 72px; font-size: 24px; border-radius: 36px; max-width: 320px; margin: 0 auto; }
+.write-btn svg { width: 28px; height: 28px; }
+/* Write screen (typing as a first-class way to journal) */
+#write.active { display: flex; flex-direction: column; height: calc(100dvh - 40px); }
+#write textarea { flex: 1; min-height: 160px; font-size: 24px; line-height: 1.45; }
+.write-title { font-size: 24px; font-weight: 700; margin: 4px 0 6px; }
+.added-note { margin: 8px 0 0; }
+/* "Add to this entry" choice sheet */
+.sheet-backdrop { position: fixed; inset: 0; background: rgba(40,30,20,.35); z-index: 20; display: flex; align-items: flex-end; justify-content: center; }
+.sheet-backdrop[hidden] { display: none; }
+.choice-sheet { width: 100%; max-width: 430px; background: var(--bg); border-radius: 22px 22px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
+.choice-sheet h2 { font-size: 22px; margin: 0 0 4px; }
+.choice-sheet .row2 .big-btn { min-height: 96px; font-size: 24px; flex-direction: column; gap: 4px; }
 
 /* Recording */
 .listening { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 650; margin: 8px 0 14px; }
@@ -243,7 +256,7 @@ textarea {
 .entry-actions { display: flex; gap: 8px; padding: 0 12px 12px; }
 .entry-actions .big-btn { margin: 0; min-height: 56px; font-size: 18px; flex: 1; }
 .entry-del { width: 84px; border: 2px solid #e5d9c8 !important; border-radius: 14px; background: #fffdf8 !important; }
-.entry-time { font-size: 20px; font-weight: 400; color: #56608a; }
+.entry-time { display: block; font-size: 19px; font-weight: 400; color: #56608a; white-space: nowrap; }
 .tag-open { font: 600 13px/1 system-ui; color: #7a5200; background: #fff0cf; border-radius: 99px; padding: 4px 8px; margin-left: 6px; vertical-align: middle; }
 #editor.active { display: flex; flex-direction: column; height: calc(100dvh - 40px); }
 #editor textarea { flex: 1; min-height: 160px; font-size: 22px; }
@@ -263,6 +276,10 @@ body.editing main { padding-bottom: 20px; }
       <button class="talk-btn" id="talkBtn" aria-label="Talk">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="#fff"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
         <span id="talkLabel">Talk</span>
+      </button>
+      <button class="big-btn secondary write-btn" id="writeBtn" aria-label="Write">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M13.5 6.5l4 4"/></svg>
+        <span id="writeLabel">Write</span>
       </button>
       <p class="hint" id="homeHint"></p>
       <div class="draft-card" id="draftCard" hidden>
@@ -300,6 +317,19 @@ body.editing main { padding-bottom: 20px; }
       <p class="tap-hint">Tap a page to fix a word.</p>
       <div class="page-stage" id="pageStage"></div>
       <p class="font-note">Placeholder handwriting — your own font goes here later</p>
+    </section>
+
+    <!-- WRITE (typing instead of talking) -->
+    <section id="write" class="screen">
+      <div class="write-title">Write</div>
+      <p class="sofar" id="writeSoFar" hidden></p>
+      <textarea id="writeText" placeholder="Type your thoughts here…" aria-label="Your entry"></textarea>
+      <p class="notice ok added-note" id="writeAdded" hidden></p>
+      <div class="row2">
+        <button class="big-btn" id="writeAdd">＋ Add</button>
+        <button class="big-btn done-btn" id="writeDone">✓ Done</button>
+      </div>
+      <button class="link-btn" id="writeCancel">Cancel</button>
     </section>
 
     <!-- EDITOR -->
@@ -365,6 +395,19 @@ body.editing main { padding-bottom: 20px; }
     <button class="tab" data-go="journal" id="tabJournal">📖 Journal</button>
     <button class="tab" data-go="settings" id="tabSettings">⚙ Settings</button>
   </nav>
+</div>
+
+<!-- "Add to this entry": Talk or Write -->
+<div class="sheet-backdrop" id="choiceSheet" hidden>
+  <div class="choice-sheet" role="dialog" aria-label="Add to this entry">
+    <h2>Add to this entry</h2>
+    <p class="sub" id="choiceSub" style="margin-bottom:12px"></p>
+    <div class="row2">
+      <button class="big-btn" id="choiceTalk">🎙<span>Talk</span></button>
+      <button class="big-btn secondary" id="choiceWrite">✍<span>Write</span></button>
+    </div>
+    <button class="link-btn" id="choiceCancel" style="width:100%">Cancel</button>
+  </div>
 </div>
 
 <!-- Hidden layout box used to measure pagination at exact mm size -->
@@ -433,7 +476,7 @@ function go(id) {
   $("#tabTalk").classList.toggle("active", id === "home" || id === "record");
   $("#tabJournal").classList.toggle("active", ["journal", "page", "print", "editor"].includes(id));
   $("#tabSettings").classList.toggle("active", id === "settings");
-  document.body.classList.toggle("editing", id === "editor");   // full-screen editor
+  document.body.classList.toggle("editing", id === "editor" || id === "write");   // full-screen typing screens
   if (id === "home") renderHome();
   if (id === "journal") renderList();
   if (id === "page") renderPageScreen();
@@ -495,14 +538,27 @@ function appendToOpen(text) {
   return false;
 }
 // Reopen a saved entry: it keeps its original date; new recordings append to its tail (so after printed pages).
-function reopen(id) {
+function reopen(id, mode) {
   const open = localStorage.getItem(OPEN);
   if (open && open !== id) closeOpen();
   const e = getEntry(id); if (!e) return;
   e.lastActivity = now(); putEntry(e);
   localStorage.setItem(OPEN, id);
-  startRecording();
+  if (mode === "write") startWriting(); else startRecording();
 }
+// Ask "Talk or Write?" before reopening a saved entry.
+let choiceId = null;
+function askAddMode(id) {
+  const e = getEntry(id); if (!e) return;
+  choiceId = id;
+  $("#choiceSub").textContent = "From " + fmtDate(e.ts) + ". New words go after the last page.";
+  $("#choiceSheet").hidden = false;
+}
+const closeChoice = () => { $("#choiceSheet").hidden = true; };
+$("#choiceTalk").onclick = () => { closeChoice(); reopen(choiceId, "talk"); };
+$("#choiceWrite").onclick = () => { closeChoice(); reopen(choiceId, "write"); };
+$("#choiceCancel").onclick = closeChoice;
+$("#choiceSheet").onclick = (ev) => { if (ev.target.id === "choiceSheet") closeChoice(); };
 
 /* ============ Auto-close ============ */
 let autoClosedMsg = "";
@@ -524,9 +580,10 @@ function renderHome() {
   $("#autoClosedNote").hidden = !autoClosedMsg;
   $("#autoClosedNote").textContent = autoClosedMsg;
   $("#draftCard").hidden = !e;
-  $("#talkLabel").textContent = e ? "Add more" : "Talk";
-  $("#homeHint").innerHTML = e ? "Tap to keep talking.<br>Say <b>“journal done”</b> when you're finished."
-                               : "Tap Talk, then speak.<br>Say <b>“journal done”</b> when your entry is finished.";
+  $("#talkLabel").textContent = e ? "Talk more" : "Talk";
+  $("#writeLabel").textContent = e ? "Write more" : "Write";
+  $("#homeHint").innerHTML = e ? "Talk or write to keep adding.<br>Say or type <b>“journal done”</b> when you're finished."
+                               : "Talk, or write if you'd rather not speak.<br>Finish with <b>“journal done”</b> or Done.";
   if (e) {
     const closeAt = e.lastActivity + prefs.autoCloseHours * 36e5;
     $("#draftStarted").textContent = fmtShort(e.ts) + " · " + fmtTime(e.ts);
@@ -597,6 +654,38 @@ function stopRecognition() { recording = false; if (rec) { try { rec.stop(); } c
 const currentRecordingText = () => usingFallback ? $("#fallbackText").value : finalText + ($("#transcript .interim")?.textContent || "");
 
 $("#talkBtn").onclick = startRecording;
+
+/* ============ Write (typing as a first-class way to journal) ============
+   Uses exactly the same append path as a recording: appendToOpen(). */
+function startWriting() {
+  autoClosedMsg = "";
+  const e = getOpen() || openNewEntry();
+  const words = wordCount(fullText(e));
+  $("#writeSoFar").hidden = !words;
+  $("#writeSoFar").textContent = `Adding to your entry from ${fmtShort(e.ts)} · ${fmtTime(e.ts)} (${words} words so far).`;
+  $("#writeText").value = "";
+  $("#writeAdded").hidden = true;
+  go("write");
+  $("#writeText").focus();
+}
+$("#writeBtn").onclick = startWriting;
+$("#writeAdd").onclick = () => {
+  const text = $("#writeText").value;
+  if (!text.trim()) { $("#writeText").focus(); return; }
+  if (appendToOpen(text)) return;                 // ended with "journal done": entry closed, page shown
+  const e = getOpen();
+  $("#writeText").value = "";
+  $("#writeAdded").textContent = `Added ✓ Your entry now has ${wordCount(fullText(e))} words. Keep writing, or tap Done.`;
+  $("#writeAdded").hidden = false;
+  $("#writeSoFar").hidden = true;
+  $("#writeText").focus();
+};
+$("#writeDone").onclick = () => { if (!appendToOpen($("#writeText").value)) finishEntry(); };
+$("#writeCancel").onclick = () => {             // discard only the unsaved typed text
+  const e = getOpen();
+  if (e && !fullText(e).trim()) { removeEntry(e.id); localStorage.removeItem(OPEN); }
+  go("home");
+};
 $("#typeInstead").onclick = () => { stopRecognition(); showFallback("Type your entry below. End with “journal done” (or tap Done) to finish."); };
 $("#sampleBtn").onclick = () => { $("#fallbackText").value = SAMPLE; };
 $("#cancelBtn").onclick = () => {
@@ -682,7 +771,7 @@ function scaledPage(entry, wmm, hmm, pxW, pg) {
 function renderPageScreen() {
   const e = getCurrent();
   if (!e) { go("journal"); return; }
-  $("#addToEntry").textContent = localStorage.getItem(OPEN) === e.id ? "＋ Keep talking" : "＋ Add to this entry";
+  $("#addToEntry").textContent = localStorage.getItem(OPEN) === e.id ? "＋ Keep going" : "＋ Add to this entry";
   const stage = $("#pageStage"); stage.innerHTML = "";
   const [wmm, hmm] = sizeOf(e);
   const w = Math.min(stage.clientWidth || 350, 360);
@@ -709,7 +798,7 @@ function renderPageScreen() {
   }
 }
 $("#toPrint").onclick = () => go("print");
-$("#addToEntry").onclick = () => reopen(currentId);
+$("#addToEntry").onclick = () => askAddMode(currentId);
 
 /* ============ Simple editor ============ */
 let editing = null;   // page number being edited
@@ -756,11 +845,11 @@ function renderList() {
     li.innerHTML = '<div class="entry-top"><button class="entry-open"><span class="entry-date"></span><span class="entry-first"></span></button></div>' +
       '<div class="entry-actions"><button class="big-btn secondary add">＋ Add to this entry</button><button class="entry-del" aria-label="Delete entry">🗑<br>Delete</button></div>';
     li.querySelector(".entry-date").textContent = fmtDate(e.ts);
-    li.querySelector(".entry-date").insertAdjacentHTML("beforeend", ' <span class="entry-time">' + fmtTime(e.ts) + "</span>");
+    li.querySelector(".entry-date").insertAdjacentHTML("beforeend", '<span class="entry-time">' + fmtTime(e.ts) + "</span>");
     if (e.id === openId) li.querySelector(".entry-date").insertAdjacentHTML("beforeend", '<span class="tag-open">open</span>');
     li.querySelector(".entry-first").textContent = fullText(e).split(/(?<=[.!?])\s|\n/)[0];
     li.querySelector(".entry-open").onclick = () => { currentId = e.id; go("page"); };
-    li.querySelector(".add").onclick = () => reopen(e.id);
+    li.querySelector(".add").onclick = () => askAddMode(e.id);
     li.querySelector(".entry-del").onclick = () => {
       if (!confirm("Delete the entry from " + fmtDate(e.ts) + "?")) return;
       if (e.id === openId) localStorage.removeItem(OPEN);
