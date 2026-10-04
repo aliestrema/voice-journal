@@ -404,6 +404,14 @@ body.editing main { padding-bottom: 20px; }
         <button data-h="12">12 hours</button><button data-h="24">24 hours</button>
       </div>
       <p class="sub" style="margin-top:12px;font-size:16px">…with no new recording. Saying “journal done” or tapping Done still closes it straight away. A closed entry is kept in your Journal, and you can always add to it later.</p>
+
+      <div class="label" style="margin-top:26px">Backup</div>
+      <p class="sub" style="font-size:16px;margin-bottom:8px">Safari and the home-screen app keep separate journals. Use backup and restore to move entries between them.</p>
+      <button class="big-btn" id="backupBtn">💾 Back up journal</button>
+      <p class="sub" id="lastBackup" style="font-size:15px;margin:0 0 6px"></p>
+      <button class="big-btn secondary" id="restoreBtn">📂 Restore from backup</button>
+      <input type="file" id="restoreFile" accept=".json,application/json" hidden>
+      <p class="notice" id="backupMsg" hidden></p>
     </section>
   </main>
 
@@ -465,14 +473,15 @@ const KEY = "voiceJournal.entries", OPEN = "voiceJournal.openId", PREFS = "voice
 const SIZES = { A5: [148, 210], A6: [105, 148], B6: [125, 176] };
 const SHEETS = { letter: [215.9, 279.4, "US Letter"], a4: [210, 297, "A4"] };
 
-function migrate(e) {   // entries saved by the previous prototype pass
-  if (e.frozen) return e;
-  return { id: e.id, ts: e.ts, frozen: [], tail: e.text || "", size: null, lastActivity: e.ts, pending: "" };
+function migrate(e) {   // entries saved by earlier prototype passes
+  if (!e.frozen) e = { id: e.id, ts: e.ts, frozen: [], tail: e.text || "", size: null, lastActivity: e.ts, pending: "" };
+  if (!e.updatedAt) e.updatedAt = e.lastActivity || e.ts;   // last-modified time, used to merge backups
+  return e;
 }
 const loadAll = () => JSON.parse(localStorage.getItem(KEY) || "[]").map(migrate);
 const saveAll = (l) => { localStorage.setItem(KEY, JSON.stringify(l)); pageCache.clear(); };
 const getEntry = (id) => loadAll().find(e => e.id === id) || null;
-function putEntry(e) { const l = loadAll(); const i = l.findIndex(x => x.id === e.id); if (i < 0) l.push(e); else l[i] = e; saveAll(l); }
+function putEntry(e) { e.updatedAt = Date.now() + clockOffset; const l = loadAll(); const i = l.findIndex(x => x.id === e.id); if (i < 0) l.push(e); else l[i] = e; saveAll(l); }
 const removeEntry = (id) => saveAll(loadAll().filter(x => x.id !== id));
 const fullText = (e) => [...e.frozen.map(f => f.text), e.tail].filter(t => t && t.trim()).join("\n");
 
@@ -514,7 +523,7 @@ function go(id) {
   if (id === "journal") renderList();
   if (id === "page") renderPageScreen();
   if (id === "print") renderPrint();
-  if (id === "settings") renderSettings();
+  if (id === "settings") { $("#backupMsg").hidden = true; renderSettings(); }
   window.scrollTo(0, 0);
 }
 document.addEventListener("click", (e) => {
@@ -962,11 +971,75 @@ function renderList() {
 
 /* ============ Settings ============ */
 function renderSettings() {
+  renderBackupInfo();
   document.querySelectorAll("#closeSeg button").forEach(b => b.classList.toggle("on", +b.dataset.h === prefs.autoCloseHours));
 }
 document.querySelectorAll("#closeSeg button").forEach(b => b.onclick = () => {
   prefs.autoCloseHours = +b.dataset.h; savePrefs(); renderSettings(); checkAutoClose();
 });
+
+/* ============ Backup & restore ============
+   One JSON file with everything. Restore MERGES: it never deletes, and for the same entry keeps the newer copy. */
+const LASTBACKUP = "voiceJournal.lastBackup";
+function renderBackupInfo() {
+  const t = +localStorage.getItem(LASTBACKUP);
+  $("#lastBackup").textContent = t ? "Last backup: " + fmtDate(t) + ", " + fmtTime(t) : "No backup yet.";
+}
+function showBackupMsg(text, ok) { const m = $("#backupMsg"); m.textContent = text; m.classList.toggle("ok", !!ok); m.hidden = false; m.scrollIntoView({ block: "nearest" }); }
+
+$("#backupBtn").onclick = async () => {
+  const t = now(), d = new Date(t);
+  const data = { app: "voice-journal", version: 1, exportedAt: new Date(t).toISOString(),
+                 entries: loadAll(), openId: localStorage.getItem(OPEN), prefs };
+  const name = `voice-journal-backup-${toDateValue(t)}.json`;
+  const file = new File([JSON.stringify(data, null, 1)], name, { type: "application/json" });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: "Voice Journal backup" });   // iOS: choose "Save to Files"
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(file); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    }
+  } catch (err) {
+    if (err && err.name === "AbortError") return;        // she closed the share sheet: nothing saved
+    showBackupMsg("Sorry, the backup couldn't be saved. Please try again."); return;
+  }
+  localStorage.setItem(LASTBACKUP, String(t));
+  renderBackupInfo();
+  const n = data.entries.length;
+  showBackupMsg(`Backup ready: ${n} entr${n === 1 ? "y" : "ies"} in “${name}”.`, true);
+};
+
+$("#restoreBtn").onclick = () => { $("#restoreFile").value = ""; $("#restoreFile").click(); };
+$("#restoreFile").onchange = async () => {
+  const f = $("#restoreFile").files[0]; if (!f) return;
+  let data;
+  try { data = JSON.parse(await f.text()); } catch (e) { data = null; }
+  const valid = data && typeof data === "object" && Array.isArray(data.entries) && (data.app === "voice-journal" || data.version) &&
+    data.entries.every(e => e && typeof e.id === "string" && typeof e.ts === "number" &&
+      (Array.isArray(e.frozen) ? typeof e.tail === "string" : typeof e.text === "string"));
+  if (!valid) { showBackupMsg("That file isn't a Voice Journal backup, so nothing was changed. Please pick a file named voice-journal-backup-….json."); return; }
+  const list = loadAll();
+  let added = 0, updated = 0, skipped = 0;
+  for (const raw of data.entries) {
+    const e = migrate(JSON.parse(JSON.stringify(raw)));
+    const i = list.findIndex(x => x.id === e.id);
+    if (i < 0) { list.push(e); added++; }
+    else if ((e.updatedAt || 0) > (list[i].updatedAt || 0)) { list[i] = e; updated++; }
+    else skipped++;
+  }
+  saveAll(list);                                            // keeps each entry's own updatedAt
+  let draftNote = "";
+  if (!localStorage.getItem(OPEN) && data.openId && list.some(x => x.id === data.openId)) {
+    localStorage.setItem(OPEN, data.openId); draftNote = " Your unfinished entry was restored too.";
+  }
+  if (!localStorage.getItem(PREFS) && data.prefs) { Object.assign(prefs, data.prefs); savePrefs(); renderSettings(); }
+  const plural = (n, w) => `${n} entr${n === 1 ? "y" : "ies"}`;
+  showBackupMsg(`Added ${plural(added)}, updated ${updated}, skipped ${skipped} already here.${draftNote}`, true);
+  checkAutoClose();
+};
 
 /* ============ Print ============ */
 document.querySelectorAll("#sizeSeg button").forEach(b => b.onclick = () => { prefs.sizeName = b.dataset.size; savePrefs(); renderPrint(); });
