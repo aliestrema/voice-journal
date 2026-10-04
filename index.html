@@ -88,6 +88,17 @@ button { font: inherit; cursor: pointer; }
 .choice-sheet { width: 100%; max-width: 430px; background: var(--bg); border-radius: 22px 22px 0 0; padding: 20px 20px calc(20px + env(safe-area-inset-bottom)); box-shadow: 0 -8px 30px rgba(0,0,0,.2); }
 .choice-sheet h2 { font-size: 22px; margin: 0 0 4px; }
 .choice-sheet .row2 .big-btn { min-height: 96px; font-size: 24px; flex-direction: column; gap: 4px; }
+/* Change-date sheet */
+.dlabel { display: block; font-size: 17px; font-weight: 600; color: var(--muted); margin: 0 0 12px; }
+.dlabel input { display: block; width: 100%; min-height: 60px; margin-top: 6px; padding: 8px 14px; font: 22px system-ui, sans-serif;
+  border: 2px solid #d9cfc0; border-radius: 14px; background: var(--card); color: var(--ink-ui); }
+#dateSheet .row2 .big-btn { min-height: 64px; font-size: 21px; flex-direction: row; }
+.date-btn { min-height: 56px; font-size: 18px; margin: 0 0 6px; }
+.date-line { display: flex; align-items: center; gap: 6px; font-size: 17px; color: var(--muted); margin: 0 0 8px; }
+.date-line[hidden] { display: none; }
+.date-line b { color: var(--ink-ui); }
+.date-line .link-btn { padding: 10px 8px; min-height: 44px; font-size: 17px; }
+.reprint-all { margin: 0 0 10px; }
 
 /* Recording */
 .listening { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 650; margin: 8px 0 14px; }
@@ -314,6 +325,11 @@ body.editing main { padding-bottom: 20px; }
         <button class="big-btn" id="addToEntry">＋ Add to this entry</button>
         <button class="big-btn secondary" id="toPrint">🖨 Print…</button>
       </div>
+      <button class="big-btn secondary date-btn" id="changeDateBtn">📅 Change date</button>
+      <div id="reprintBanner" hidden>
+        <p class="notice" id="reprintBannerText"></p>
+        <button class="big-btn reprint-all" id="reprintChangedBtn"></button>
+      </div>
       <p class="tap-hint">Tap a page to fix a word.</p>
       <div class="page-stage" id="pageStage"></div>
       <p class="font-note">Placeholder handwriting — your own font goes here later</p>
@@ -323,6 +339,7 @@ body.editing main { padding-bottom: 20px; }
     <section id="write" class="screen">
       <div class="write-title">Write</div>
       <p class="sofar" id="writeSoFar" hidden></p>
+      <p class="date-line" id="writeDateLine" hidden>Date: <b id="writeDateText">Today</b> · <button class="link-btn" id="writeDateChange">change</button></p>
       <textarea id="writeText" placeholder="Type your thoughts here…" aria-label="Your entry"></textarea>
       <p class="notice ok added-note" id="writeAdded" hidden></p>
       <div class="row2">
@@ -395,6 +412,22 @@ body.editing main { padding-bottom: 20px; }
     <button class="tab" data-go="journal" id="tabJournal">📖 Journal</button>
     <button class="tab" data-go="settings" id="tabSettings">⚙ Settings</button>
   </nav>
+</div>
+
+<!-- Change an entry's date and start time -->
+<div class="sheet-backdrop" id="dateSheet" hidden>
+  <div class="choice-sheet" role="dialog" aria-label="Change date">
+    <h2>Change date</h2>
+    <p class="sub" style="margin-bottom:12px">When did this entry really happen?</p>
+    <label class="dlabel">Date<input type="date" id="dateInput"></label>
+    <label class="dlabel">Start time<input type="time" id="timeInput"></label>
+    <p class="notice" id="dateWarn" hidden></p>
+    <p class="notice" id="datePrinted" hidden></p>
+    <div class="row2">
+      <button class="big-btn secondary" id="dateCancel">Cancel</button>
+      <button class="big-btn" id="dateSave">Save</button>
+    </div>
+  </div>
 </div>
 
 <!-- "Add to this entry": Talk or Write -->
@@ -496,7 +529,8 @@ const fmtDate = (ts) => new Date(ts).toLocaleDateString("en-US", { weekday: "lon
 const fmtShort = (ts) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 const fmtTime = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
 const wordCount = (t) => (t.match(/\S+/g) || []).length;
-const range = (nums) => nums.length === 1 ? "page " + nums[0] : "pages " + nums[0] + "–" + nums[nums.length - 1];
+const range = (nums) => nums.length === 1 ? "page " + nums[0]
+  : "pages " + (nums.every((n, i) => !i || n === nums[i - 1] + 1) ? nums[0] + "–" + nums[nums.length - 1] : nums.join(", "));
 
 /* ============ The open entry ============ */
 const getOpen = () => { const id = localStorage.getItem(OPEN); return id ? getEntry(id) : null; };
@@ -661,6 +695,8 @@ function startWriting() {
   autoClosedMsg = "";
   const e = getOpen() || openNewEntry();
   const words = wordCount(fullText(e));
+  writingNew = !words;                            // the date control is only for a brand-new entry
+  renderWriteDate();
   $("#writeSoFar").hidden = !words;
   $("#writeSoFar").textContent = `Adding to your entry from ${fmtShort(e.ts)} · ${fmtTime(e.ts)} (${words} words so far).`;
   $("#writeText").value = "";
@@ -669,6 +705,15 @@ function startWriting() {
   $("#writeText").focus();
 }
 $("#writeBtn").onclick = startWriting;
+let writingNew = false;
+function renderWriteDate() {
+  const e = getOpen();
+  $("#writeDateLine").hidden = !(writingNew && e);
+  if (!e) return;
+  const today = new Date(now()).toDateString() === new Date(e.ts).toDateString();
+  $("#writeDateText").textContent = (today ? "Today" : fmtShort(e.ts)) + ", " + fmtTime(e.ts);
+}
+$("#writeDateChange").onclick = () => { const e = getOpen(); if (e) openDateSheet(e.id, renderWriteDate); };
 $("#writeAdd").onclick = () => {
   const text = $("#writeText").value;
   if (!text.trim()) { $("#writeText").focus(); return; }
@@ -768,10 +813,66 @@ function scaledPage(entry, wmm, hmm, pxW, pg) {
 }
 
 /* ============ Page view ============ */
+/* ============ Change date (backdating) ============ */
+const pad = (n) => String(n).padStart(2, "0");
+const toDateValue = (ts) => { const d = new Date(ts); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const toTimeValue = (ts) => { const d = new Date(ts); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function readDateSheet() {   // local date + time -> timestamp (NaN if incomplete)
+  const [y, m, d] = $("#dateInput").value.split("-").map(Number), [hh, mm] = ($("#timeInput").value || "00:00").split(":").map(Number);
+  return new Date(y, m - 1, d, hh, mm).getTime();
+}
+// A printed page keeps its words; if a new (longer) date header no longer leaves room, shrink its writing (min 80%).
+function fitScale(e, n, text) { const [w, h] = sizeOf(e); return [1, 0.95, 0.9, 0.85, 0.8].find(s => measurer(e, w, h, n, s)(text)); }
+
+let dateTarget = null, dateDone = null;
+function openDateSheet(id, onSaved) {
+  const e = getEntry(id); if (!e) return;
+  dateTarget = id; dateDone = onSaved || null;
+  $("#dateInput").value = toDateValue(e.ts); $("#timeInput").value = toTimeValue(e.ts);
+  $("#dateInput").max = toDateValue(now());
+  $("#dateWarn").hidden = true;
+  const printed = e.frozen.length;
+  $("#datePrinted").hidden = !printed;
+  $("#datePrinted").textContent = printed ? `${printed === 1 ? "Page 1 is" : range(e.frozen.map((f, i) => i + 1)).replace("pages", "Pages") + " are"} already printed with the old date. After saving, ${printed === 1 ? "it" : "they"} will be marked “changed since printing” so you can reprint.` : "";
+  $("#dateSheet").hidden = false;
+}
+function checkDateInput() {
+  const t = readDateSheet();
+  const bad = isNaN(t) ? "Please pick a date." : t > now() ? "That's in the future. Please pick today or an earlier date and time." : "";
+  $("#dateWarn").textContent = bad; $("#dateWarn").hidden = !bad;
+  return bad ? null : t;
+}
+$("#dateInput").oninput = $("#timeInput").oninput = checkDateInput;
+$("#dateCancel").onclick = () => { $("#dateSheet").hidden = true; };
+$("#dateSheet").onclick = (ev) => { if (ev.target.id === "dateSheet") $("#dateSheet").hidden = true; };
+$("#dateSave").onclick = () => {
+  const t = checkDateInput(); if (t === null) return;          // no future dates
+  const e = getEntry(dateTarget); if (!e) return;
+  if (t !== e.ts) {
+    e.ts = t;
+    let tooLong = false;
+    e.frozen.forEach((f, i) => {                               // printed pages now show the old date
+      f.changed = true;
+      const sc = fitScale(e, i + 1, f.text);
+      if (sc) f.scale = Math.min(f.scale || 1, sc); else tooLong = true;
+    });
+    putEntry(e);
+    if (tooLong) alert("The new date line is longer, so page 1 may be a little tight. Check it before reprinting.");
+  }
+  $("#dateSheet").hidden = true;
+  if (dateDone) dateDone(); else renderPageScreen();
+};
+$("#changeDateBtn").onclick = () => openDateSheet(currentId);
+$("#reprintChangedBtn").onclick = () => startPrint("changed");
+
 function renderPageScreen() {
   const e = getCurrent();
   if (!e) { go("journal"); return; }
   $("#addToEntry").textContent = localStorage.getItem(OPEN) === e.id ? "＋ Keep going" : "＋ Add to this entry";
+  const changedNums = e.frozen.map((f, i) => f.changed ? i + 1 : 0).filter(Boolean);
+  $("#reprintBanner").hidden = changedNums.length < 2;     // one changed page: its own button below is enough
+  $("#reprintBannerText").textContent = `${range(changedNums).replace("pages", "Pages")} changed since printing (for example a new date).`;
+  $("#reprintChangedBtn").textContent = `🖨 Reprint ${range(changedNums)}`;
   const stage = $("#pageStage"); stage.innerHTML = "";
   const [wmm, hmm] = sizeOf(e);
   const w = Math.min(stage.clientWidth || 350, 360);
@@ -903,7 +1004,8 @@ function renderPrint(syncInputs = true) {
   const box = $("#printButtons"); box.innerHTML = "";
   const btn = (label, cls, fn, id) => { const b = document.createElement("button"); b.className = "big-btn " + cls; b.textContent = label; b.onclick = fn; if (id) b.id = id; box.appendChild(b); };
   if (fresh.length) btn(anyPrinted ? `🖨 Print new pages (${range(fresh.map(p => p.n))})` : `🖨 Print (${range(fresh.map(p => p.n))})`, "", () => startPrint("new"), "printNew");
-  for (const c of changed) btn(`🖨 Reprint page ${c.n} (changed)`, fresh.length ? "secondary" : "", () => startPrint("page", c.n));
+  if (changed.length > 1) btn(`🖨 Reprint changed pages (${range(changed.map(p => p.n))})`, fresh.length ? "secondary" : "", () => startPrint("changed"));
+  else for (const c of changed) btn(`🖨 Reprint page ${c.n} (changed)`, fresh.length ? "secondary" : "", () => startPrint("page", c.n));
   if (anyPrinted || !fresh.length) btn(`Print all (${pages.length} page${pages.length > 1 ? "s" : ""})`, "secondary", () => startPrint("all"), "printAll");
 
   // on-screen preview: each sheet to scale, page centered, dashed cut line, status label
@@ -954,7 +1056,8 @@ function buildPrintSheet(e, pages) {
 let job = null, lastUndo = null;
 function startPrint(mode, n) {
   const e = getCurrent(), pages = getPages(e);
-  const sel = mode === "new" ? pages.filter(p => !p.printed) : mode === "all" ? pages : pages.filter(p => p.n === n);
+  const sel = mode === "new" ? pages.filter(p => !p.printed) : mode === "all" ? pages
+            : mode === "changed" ? pages.filter(p => p.changed) : pages.filter(p => p.n === n);
   if (!sel.length) return;
   buildPrintSheet(e, sel);
   job = { id: e.id, pages: sel, size: sizeOf(e), before: JSON.stringify(e), done: false };
