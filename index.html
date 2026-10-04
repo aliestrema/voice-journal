@@ -1,0 +1,908 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Voice Journal (prototype)</title>
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Journal">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#efe9df">
+<style id="pageSizeStyle">@page { size: 215.9mm 279.4mm; margin: 0; }</style>
+<style>
+/* ---------- Font (local file, works offline) ---------- */
+@font-face {
+  font-family: "Hand";
+  src: url("fonts/DancingScript.ttf") format("truetype");
+  font-weight: 400 700;
+  font-display: block;
+}
+
+/* ---------- App shell ---------- */
+:root {
+  --bg: #efe9df;
+  --ink-ui: #2b2723;
+  --accent: #b5552f;        /* terracotta */
+  --accent-dark: #8e3f20;
+  --muted: #7a7065;
+  --card: #fffdf8;
+  --ink: #23305a;           /* handwriting ink: dark blue-black */
+  --paper: #fbf6e9;
+  --rule: rgba(80, 110, 160, .22);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink-ui);
+  font: 18px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.app {
+  max-width: 430px; min-height: 100vh; margin: 0 auto;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+}
+main { flex: 1; padding: calc(20px + env(safe-area-inset-top)) 20px 110px; }
+.screen { display: none; }
+.screen.active { display: block; }
+h1 { font-size: 26px; margin: 4px 0 4px; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+button { font: inherit; cursor: pointer; }
+
+.big-btn {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; min-height: 64px; padding: 14px 20px; margin: 10px 0;
+  border: 0; border-radius: 18px;
+  background: var(--accent); color: #fff; font-size: 21px; font-weight: 650;
+  box-shadow: 0 3px 0 var(--accent-dark);
+}
+.big-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--accent-dark); }
+.big-btn.secondary { background: var(--card); color: var(--ink-ui); box-shadow: 0 2px 0 #d3c9ba; border: 2px solid #d9cfc0; }
+.link-btn { background: none; border: 0; color: var(--accent-dark); text-decoration: underline; padding: 12px 4px; font-size: 18px; }
+.back { background: none; border: 0; font-size: 18px; color: var(--accent-dark); padding: 10px 0; min-height: 48px; }
+
+/* Home */
+.home { text-align: center; padding-top: 40px; }
+.talk-btn {
+  width: 220px; height: 220px; margin: 34px auto 22px; border-radius: 50%;
+  border: 0; background: radial-gradient(circle at 35% 30%, #d06a40, var(--accent) 60%, var(--accent-dark));
+  color: #fff; font-size: 34px; font-weight: 700; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 10px 30px rgba(142,63,32,.35), inset 0 -6px 0 rgba(0,0,0,.12);
+}
+.talk-btn svg { width: 64px; height: 64px; }
+.talk-btn:active { transform: scale(.97); }
+.hint { color: var(--muted); font-size: 19px; }
+
+/* Recording */
+.listening { display: flex; align-items: center; gap: 12px; font-size: 22px; font-weight: 650; margin: 8px 0 14px; }
+.dot { width: 18px; height: 18px; border-radius: 50%; background: #d23b2a; animation: pulse 1.2s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .35; transform: scale(.8); } }
+.transcript {
+  min-height: 190px; padding: 16px; border-radius: 16px; background: var(--card);
+  border: 2px solid #e2d9cb; font-size: 21px; line-height: 1.45; white-space: pre-wrap;
+}
+.transcript .interim { color: var(--muted); }
+.transcript:empty::before { content: "Start speaking… your words will appear here."; color: #a89d90; }
+.notice {
+  background: #fff4d6; border: 2px solid #e8cf86; border-radius: 14px; padding: 12px 14px;
+  font-size: 18px; margin: 0 0 12px;
+}
+textarea {
+  width: 100%; min-height: 220px; padding: 14px; border-radius: 16px; border: 2px solid #d9cfc0;
+  background: var(--card); font: 21px/1.45 system-ui, sans-serif; color: var(--ink-ui); resize: vertical;
+}
+.stop-btn { background: #c2362a; box-shadow: 0 3px 0 #8d2219; min-height: 76px; font-size: 24px; }
+.stop-btn .sq { width: 22px; height: 22px; background: #fff; border-radius: 4px; }
+
+/* Journal list */
+.entry-list { list-style: none; padding: 0; margin: 0; }
+.entry {
+  display: flex; align-items: stretch; background: var(--paper); border-radius: 14px; margin: 0 0 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.12); overflow: hidden;
+}
+.entry-open { flex: 1; min-width: 0; text-align: left; border: 0; background: none; padding: 14px 16px; min-height: 76px; color: var(--ink); }
+.entry-date { font-family: "Hand", cursive; font-size: 26px; font-weight: 700; line-height: 1.1; display: block; }
+.entry-first { font-family: "Hand", cursive; font-size: 22px; color: #4a5474; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.entry-del { flex: none; width: 76px; border: 0; background: none; color: #8a7e72; font-size: 15px; padding: 0 8px; border-left: 1px solid #eadfcd; }
+.empty { color: var(--muted); text-align: center; padding: 40px 10px; }
+
+/* Bottom tabs */
+.tabs {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 430px; display: flex; gap: 10px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  background: rgba(239,233,223,.96); border-top: 1px solid #ddd3c4;
+}
+.tab { flex: 1; min-height: 60px; padding: 0 4px; border-radius: 14px; border: 2px solid transparent; background: none; font-size: 19px; font-weight: 600; color: var(--muted); }
+.tab.active { background: var(--card); border-color: #d9cfc0; color: var(--ink-ui); }
+
+/* ---------- THE JOURNAL PAGE ----------
+   Every size inside the page uses cqw (1% of page width), so text, margins and
+   ruled lines scale together with any notebook size, on screen and in print. */
+.jpage {
+  position: relative; container-type: inline-size;
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(ellipse at 50% 40%, rgba(255,255,255,.55), rgba(255,255,255,0) 70%),
+    radial-gradient(ellipse at 100% 100%, rgba(168,132,80,.10), rgba(168,132,80,0) 45%),
+    radial-gradient(ellipse at 0% 0%, rgba(168,132,80,.07), rgba(168,132,80,0) 40%);
+  color: var(--ink);
+  overflow: hidden;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+.jpage::before { /* faint margin line, like a real notebook */
+  content: ""; position: absolute; top: 0; bottom: 0; left: 11%; width: 0;
+  border-left: 1px solid rgba(200, 90, 90, .22);
+}
+.jinner {
+  position: absolute; inset: 0;
+  padding: 7cqw 7cqw 6cqw 14.5cqw;
+  display: flex; flex-direction: column;
+  --lh: calc(6.6cqw * var(--fs, 1));   /* --fs < 1 only when an edited printed page must shrink to fit */
+}
+.jdate {
+  font-family: "Hand", cursive; font-weight: 700; font-size: 4.9cqw; line-height: 1.15;
+  margin: 0 0 2.6cqw; letter-spacing: .005em;
+}
+.jbody {
+  flex: 1; overflow: hidden; position: relative;
+  background-image: linear-gradient(to bottom, transparent calc(100% - 1px), var(--rule) calc(100% - 1px));
+  background-origin: content-box; background-clip: content-box;
+  background-size: 100% var(--lh);
+  background-position: 0 calc(-2.5cqw * var(--fs, 1));   /* ruled line sits on the cursive baseline */
+  margin: 0 -2cqw; padding: 0 2cqw;   /* room for cursive swashes so overflow:hidden doesn't clip them */
+}
+.jtext {
+  font-family: "Hand", cursive; font-weight: 400;
+  font-size: calc(5cqw * var(--fs, 1)); line-height: var(--lh);
+  white-space: pre-wrap; overflow-wrap: break-word;
+  padding-top: 0; margin: 0; transform: translateY(-0.9cqw); /* sit the ink on the line */
+}
+.jcont { font-family: "Hand", cursive; font-size: 4cqw; color: #56608a; line-height: 1.1; margin: 0 0 2.4cqw; }
+
+/* Page screen */
+.page-stage { display: flex; flex-direction: column; align-items: center; gap: 18px; margin: 6px 0 4px; }
+.pageno { font-size: 13px; color: var(--muted); margin: -12px 0 0; }
+.scalebox { position: relative; }
+.page-stage .scalebox { box-shadow: 0 1px 2px rgba(0,0,0,.12), 0 10px 26px rgba(70,50,20,.18); border-radius: 2px; }
+.font-note { text-align: center; font-size: 13px; color: #9a8f82; margin: 10px 0 4px; font-style: italic; }
+.draft-card { background: var(--card); border: 2px dashed #d3b9a6; border-radius: 16px; padding: 12px 14px; margin: 18px 0 0; text-align: left; }
+.draft-card p { margin: 0 0 4px; }
+.draft-card .words { color: var(--muted); font-size: 16px; }
+.done-btn { background: #3f6b45; box-shadow: 0 3px 0 #294a2e; }
+.sofar { font-size: 16px; color: var(--muted); margin: 0 0 8px; }
+.previews { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#measure { position: fixed; left: -10000px; top: 0; visibility: hidden; }
+
+/* Print screen */
+.label { font-weight: 650; margin: 16px 0 8px; font-size: 18px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.seg button {
+  min-height: 64px; border-radius: 14px; border: 2px solid #d9cfc0; background: var(--card);
+  font-size: 20px; font-weight: 650; color: var(--ink-ui); line-height: 1.15; padding: 6px;
+}
+.seg button small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); }
+.seg button.on { border-color: var(--accent); background: #fbe8df; box-shadow: inset 0 0 0 1px var(--accent); }
+.custom { display: none; gap: 10px; margin-top: 10px; }
+.custom.show { display: flex; }
+.custom label { flex: 1; font-size: 16px; color: var(--muted); }
+.custom input { width: 100%; min-height: 56px; font-size: 22px; padding: 8px 12px; border-radius: 12px; border: 2px solid #d9cfc0; background: var(--card); }
+.warn { color: #a3321f; font-size: 15px; min-height: 1em; margin: 6px 0 0; }
+.sheet-preview {
+  position: relative; margin: 0 auto; background: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.15), 0 6px 18px rgba(0,0,0,.08);
+}
+.sheet-preview .scalebox { position: absolute; }
+.sheet-preview .cut { position: absolute; border: 1px dashed #b9b2a8; pointer-events: none; }
+.sheet-caption { text-align: center; font-size: 14px; color: var(--muted); margin: 0 0 6px; }
+
+/* Off-screen print sheet (laid out so text can be measured, but not visible) */
+#printSheet { display: none; }
+.psheet { break-after: page; page-break-after: always; }
+.psheet:last-child { break-after: auto; page-break-after: auto; }
+.psheet { display: flex; align-items: center; justify-content: center; overflow: hidden; background: #fff; }
+.pwrap { position: relative; }
+.pwrap .jpage { outline: 0.2mm dashed #c4c4c4; }
+.crop { position: absolute; background: #9a9a9a; }
+
+@media print {
+  html, body { background: #fff !important; }
+  .app { display: none !important; }
+  #printSheet { display: block; }
+  /* On paper the real paper is the texture: keep lines and ink, drop the tint. */
+  #printSheet .jpage { background: #fff; }
+  #printSheet .jpage::before { border-left-width: 0.25mm; }
+  #printSheet .jbody { background-image: linear-gradient(to bottom, transparent calc(100% - 0.25mm), rgba(80,110,160,.35) calc(100% - 0.25mm)); }
+}
+
+/* ---------- pass 3 additions ---------- */
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.row2 .big-btn { margin: 6px 0; font-size: 19px; padding: 10px; }
+#page .row2 { grid-template-columns: 1.5fr 1fr; }
+#page .row2 .big-btn { font-size: 18px; padding: 8px 6px; white-space: nowrap; }
+.pagewrap { position: relative; display: flex; flex-direction: column; align-items: center; }
+.page-stage .scalebox { cursor: pointer; }
+.badge { display: inline-block; margin-left: 6px; font: 600 13px/1 system-ui, sans-serif;
+  padding: 6px 9px; border-radius: 99px; background: #e3efe2; color: #2f5a34; border: 1px solid #b9d3b7; }
+.badge.changed { background: #fff0cf; color: #7a5200; border-color: #e7c77a; }
+.pageno { font-size: 15px; color: var(--muted); margin: 8px 0 0; }
+#printButtons .big-btn { font-size: 19px; }
+#sizeSeg.locked, #sizeSeg.locked + .custom { display: none; }
+.tap-hint { text-align: center; font-size: 15px; color: var(--muted); margin: 2px 0 10px; }
+.reprint { width: auto; min-height: 52px; font-size: 18px; margin: 8px 0 0; padding: 8px 18px; }
+.notice.ok { background: #e7f1e4; border-color: #b9d3b7; }
+.lock-note { background: #f3ede4; border: 1px solid #ddd1c0; border-radius: 12px; padding: 10px 12px; font-size: 15px; color: #5c5248; margin: 10px 0 0; }
+.seg button:disabled { opacity: .45; }
+.seg button.on:disabled { opacity: 1; }
+.seg.three { grid-template-columns: 1fr 1fr 1fr; }
+.sheet-label { text-align: center; font-size: 14px; color: var(--muted); margin: 4px 0 8px; }
+.entry { flex-direction: column; }
+.entry-top { display: flex; }
+.entry-actions { display: flex; gap: 8px; padding: 0 12px 12px; }
+.entry-actions .big-btn { margin: 0; min-height: 56px; font-size: 18px; flex: 1; }
+.entry-del { width: 84px; border: 2px solid #e5d9c8 !important; border-radius: 14px; background: #fffdf8 !important; }
+.entry-time { font-size: 20px; font-weight: 400; color: #56608a; }
+.tag-open { font: 600 13px/1 system-ui; color: #7a5200; background: #fff0cf; border-radius: 99px; padding: 4px 8px; margin-left: 6px; vertical-align: middle; }
+#editor.active { display: flex; flex-direction: column; height: calc(100dvh - 40px); }
+#editor textarea { flex: 1; min-height: 160px; font-size: 22px; }
+body.editing .tabs { display: none; }
+body.editing main { padding-bottom: 20px; }
+.editor-title { font-size: 22px; font-weight: 700; margin: 8px 0 10px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <main>
+    <!-- HOME -->
+    <section id="home" class="screen active home">
+      <h1>Voice Journal</h1>
+      <p class="sub">Say what's on your mind. It becomes a page.</p>
+      <p class="notice ok" id="autoClosedNote" hidden></p>
+      <button class="talk-btn" id="talkBtn" aria-label="Talk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3" fill="#fff"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        <span id="talkLabel">Talk</span>
+      </button>
+      <p class="hint" id="homeHint"></p>
+      <div class="draft-card" id="draftCard" hidden>
+        <p><b>Entry in progress</b> · started <span id="draftStarted"></span></p>
+        <p class="words" id="draftWords"></p>
+        <button class="big-btn done-btn" id="homeDone">✓ Done — finish entry</button>
+      </div>
+    </section>
+
+    <!-- RECORDING -->
+    <section id="record" class="screen">
+      <p class="sofar" id="soFar" hidden></p>
+      <div id="liveArea">
+        <div class="listening"><span class="dot"></span><span>Listening…</span></div>
+        <div class="transcript" id="transcript"></div>
+        <button class="link-btn" id="typeInstead">Type instead</button>
+      </div>
+      <div id="fallbackArea" hidden>
+        <p class="notice" id="fallbackMsg"></p>
+        <textarea id="fallbackText" placeholder="Type your entry here… end with “journal done” to finish."></textarea>
+        <button class="big-btn secondary" id="sampleBtn">Use a sample entry</button>
+      </div>
+      <button class="big-btn stop-btn" id="stopBtn"><span class="sq"></span> Stop</button>
+      <button class="big-btn done-btn" id="recDone">✓ Done — finish entry</button>
+      <button class="link-btn" id="cancelBtn">Cancel this recording</button>
+    </section>
+
+    <!-- PAGE VIEW (all pages of one entry) -->
+    <section id="page" class="screen">
+      <button class="back" data-go="journal">‹ Journal</button>
+      <div class="row2">
+        <button class="big-btn" id="addToEntry">＋ Add to this entry</button>
+        <button class="big-btn secondary" id="toPrint">🖨 Print…</button>
+      </div>
+      <p class="tap-hint">Tap a page to fix a word.</p>
+      <div class="page-stage" id="pageStage"></div>
+      <p class="font-note">Placeholder handwriting — your own font goes here later</p>
+    </section>
+
+    <!-- EDITOR -->
+    <section id="editor" class="screen">
+      <div class="editor-title" id="editorTitle">Page 1</div>
+      <p class="notice" id="editorWarn" hidden></p>
+      <textarea id="editorText"></textarea>
+      <div class="row2">
+        <button class="big-btn secondary" id="editorCancel">Cancel</button>
+        <button class="big-btn" id="editorSave">Save</button>
+      </div>
+    </section>
+
+    <!-- PRINT -->
+    <section id="print" class="screen">
+      <button class="back" data-go="page">‹ Back to entry</button>
+      <h1>Print</h1>
+      <div class="label">Notebook size</div>
+      <div class="seg" id="sizeSeg">
+        <button data-size="A5">A5<small>148 × 210 mm</small></button>
+        <button data-size="A6">A6<small>105 × 148 mm</small></button>
+        <button data-size="B6">B6<small>125 × 176 mm</small></button>
+        <button data-size="custom">Custom<small>enter mm</small></button>
+      </div>
+      <div class="custom" id="customBox">
+        <label>Width (mm)<input type="number" id="cw" inputmode="decimal" min="50" max="280" value="120"></label>
+        <label>Height (mm)<input type="number" id="ch" inputmode="decimal" min="50" max="280" value="180"></label>
+      </div>
+      <p class="lock-note" id="lockNote" hidden></p>
+      <p class="warn" id="sizeWarn"></p>
+      <div class="label">Printer paper</div>
+      <div class="seg" id="sheetSeg">
+        <button data-sheet="letter">US Letter<small>8.5 × 11 in</small></button>
+        <button data-sheet="a4">A4<small>210 × 297 mm</small></button>
+      </div>
+      <p class="sheet-caption" id="sheetCaption" style="margin-top:16px"></p>
+      <p class="notice ok" id="printedNote" hidden><span id="printedNoteText"></span> <button class="link-btn" id="undoPrint" style="padding:4px">Didn't print? Undo</button></p>
+      <div id="printButtons"></div>
+      <div class="previews" id="previews"></div>
+      <p class="sub" style="font-size:15px;margin-top:14px">Tip: in the print dialog choose “Actual size” / 100% scale, not “Fit to page”.</p>
+    </section>
+
+    <!-- JOURNAL -->
+    <section id="journal" class="screen">
+      <h1>Journal</h1>
+      <ul class="entry-list" id="entryList"></ul>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="settings" class="screen">
+      <h1>Settings</h1>
+      <div class="label">Close an open entry automatically after</div>
+      <div class="seg three" id="closeSeg">
+        <button data-h="1">1 hour</button><button data-h="3">3 hours</button><button data-h="6">6 hours</button>
+        <button data-h="12">12 hours</button><button data-h="24">24 hours</button>
+      </div>
+      <p class="sub" style="margin-top:12px;font-size:16px">…with no new recording. Saying “journal done” or tapping Done still closes it straight away. A closed entry is kept in your Journal, and you can always add to it later.</p>
+    </section>
+  </main>
+
+  <nav class="tabs">
+    <button class="tab active" data-go="home" id="tabTalk">🎙 Talk</button>
+    <button class="tab" data-go="journal" id="tabJournal">📖 Journal</button>
+    <button class="tab" data-go="settings" id="tabSettings">⚙ Settings</button>
+  </nav>
+</div>
+
+<!-- Hidden layout box used to measure pagination at exact mm size -->
+<div id="measure"></div>
+<!-- What actually prints (filled by startPrint) -->
+<div id="printSheet"></div>
+
+<script>
+/* =====================================================================
+   DATA MODEL
+   entry = {
+     id, ts,               // ts = original start time (never changes, even when reopened)
+     frozen: [ { text, scale, printedAt, changed } ],  // printed pages 1..F, text fixed forever
+     tail,                 // text not printed yet: re-paginates freely AFTER the frozen pages
+     size,                 // [w,h] mm, locked once anything is printed (null before)
+     lastActivity,         // time of the last recording, for auto-close
+     pending               // words heard in a recording not yet stopped (reload safety)
+   }
+   The open entry (being added to) is the one whose id is in localStorage "openId".
+   ===================================================================== */
+const KEY = "voiceJournal.entries", OPEN = "voiceJournal.openId", PREFS = "voiceJournal.prefs";
+const SIZES = { A5: [148, 210], A6: [105, 148], B6: [125, 176] };
+const SHEETS = { letter: [215.9, 279.4, "US Letter"], a4: [210, 297, "A4"] };
+
+function migrate(e) {   // entries saved by the previous prototype pass
+  if (e.frozen) return e;
+  return { id: e.id, ts: e.ts, frozen: [], tail: e.text || "", size: null, lastActivity: e.ts, pending: "" };
+}
+const loadAll = () => JSON.parse(localStorage.getItem(KEY) || "[]").map(migrate);
+const saveAll = (l) => { localStorage.setItem(KEY, JSON.stringify(l)); pageCache.clear(); };
+const getEntry = (id) => loadAll().find(e => e.id === id) || null;
+function putEntry(e) { const l = loadAll(); const i = l.findIndex(x => x.id === e.id); if (i < 0) l.push(e); else l[i] = e; saveAll(l); }
+const removeEntry = (id) => saveAll(loadAll().filter(x => x.id !== id));
+const fullText = (e) => [...e.frozen.map(f => f.text), e.tail].filter(t => t && t.trim()).join("\n");
+
+const prefs = Object.assign({ autoCloseHours: 3, sizeName: "A5", custom: [120, 180], sheet: "letter" },
+  JSON.parse(localStorage.getItem(PREFS) || "{}"));
+const savePrefs = () => { localStorage.setItem(PREFS, JSON.stringify(prefs)); pageCache.clear(); };
+const prefSize = () => prefs.sizeName === "custom" ? prefs.custom : SIZES[prefs.sizeName];
+const sizeOf = (e) => e.size || prefSize();
+
+let currentId = null;                       // entry shown in page view / print
+const getCurrent = () => currentId ? getEntry(currentId) : null;
+
+/* ============ Clock (fake-able for testing) ============
+   ?now=181m or ?now=3h  -> pretend it is that much later.  window.vjClock.advance(ms) in the console. */
+let clockOffset = 0;
+(function () {
+  const q = (new URLSearchParams(location.search).get("now") || "").trim();
+  const m = q.match(/^\+?(-?\d+(?:\.\d+)?)([mhd]?)$/);
+  if (m) clockOffset = parseFloat(m[1]) * { "": 6e4, m: 6e4, h: 36e5, d: 864e5 }[m[2]];
+})();
+const now = () => Date.now() + clockOffset;
+window.vjClock = { advance(ms) { clockOffset += ms; checkAutoClose(); }, offset: () => clockOffset };
+
+
+const SAMPLE = `Walked the long way round the garden this morning while the grass was still wet and the light was coming in low over the fence. The tomatoes by the back wall have finally started to turn red, three of them at least, and the sunflowers are taller than me now. One of them has bent right over as if it is looking for something it dropped. I stood for a while listening to the blackbird in the pear tree and thought about Mum, who planted that tree the year I was born. She used to say a garden is a diary you can walk through, and I think I finally understand what she meant.
+The runner beans have gone mad this year. I picked a whole colander full and there are still dozens hanging there, some of them far too big and stringy now. I should give a bag to Mrs. Patel next door, she always brings round samosas when her grandchildren visit and I never manage to return the favour properly. Must remember to save some seeds from the marigolds before the first frost, and the orange cosmos too, because those came through the dry spell better than anything else.
+My hands were stiff again when I tried to tie up the raspberry canes. It took a long time and I had to sit on the upturned bucket halfway through, but I did get it done. Slow is still done. The robin followed me the whole time, hopping from the wheelbarrow to the fork handle, waiting for me to turn over some soil so he could have his breakfast.
+On the way back up the path I noticed the rosemary is flowering, tiny pale blue flowers that the bees were all over. I rubbed a bit between my fingers and the smell took me straight back to Sunday dinners in the old kitchen, the radio on, everyone talking at once. Funny how a smell can do that when you least expect it. I would like to plant another one by the front door so I brush past it every time I come home.
+Tomorrow, if the rain holds off, I want to cut back the lavender and sow the last row of winter salad. And ring my sister.`;
+/* ============ Navigation ============ */
+const $ = (s) => document.querySelector(s);
+function go(id) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.toggle("active", s.id === id));
+  $("#tabTalk").classList.toggle("active", id === "home" || id === "record");
+  $("#tabJournal").classList.toggle("active", ["journal", "page", "print", "editor"].includes(id));
+  $("#tabSettings").classList.toggle("active", id === "settings");
+  document.body.classList.toggle("editing", id === "editor");   // full-screen editor
+  if (id === "home") renderHome();
+  if (id === "journal") renderList();
+  if (id === "page") renderPageScreen();
+  if (id === "print") renderPrint();
+  if (id === "settings") renderSettings();
+  window.scrollTo(0, 0);
+}
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-go]");
+  if (!t) return;
+  if (recording) stopRecognition();
+  go(t.dataset.go);
+});
+
+/* ============ Dates ============ */
+const fmtDate = (ts) => new Date(ts).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+const fmtShort = (ts) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtTime = (ts) => new Date(ts).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).toLowerCase();
+const wordCount = (t) => (t.match(/\S+/g) || []).length;
+const range = (nums) => nums.length === 1 ? "page " + nums[0] : "pages " + nums[0] + "–" + nums[nums.length - 1];
+
+/* ============ The open entry ============ */
+const getOpen = () => { const id = localStorage.getItem(OPEN); return id ? getEntry(id) : null; };
+function mergePending(e) { if (e.pending && e.pending.trim()) appendText(e, e.pending); e.pending = ""; }
+function appendText(e, t) { e.tail = e.tail.trim() ? e.tail.replace(/\s+$/, "") + "\n" + t : t; }  // new line per recording
+
+function openNewEntry() {
+  const t = now();
+  const e = { id: String(t), ts: t, frozen: [], tail: "", size: null, lastActivity: t, pending: "" };
+  putEntry(e); localStorage.setItem(OPEN, e.id);
+  return e;
+}
+// Close the open entry. Empty entries are thrown away. Returns the saved entry (or null).
+function closeOpen() {
+  const e = getOpen();
+  localStorage.removeItem(OPEN);
+  if (!e) return null;
+  mergePending(e);
+  if (!fullText(e).trim()) { removeEntry(e.id); return null; }
+  putEntry(e);
+  return e;
+}
+function finishEntry() {
+  const e = closeOpen();
+  if (e) { currentId = e.id; go("page"); } else go("home");
+}
+
+const DONE_RE = /\bjournal[\s,]+done[\s.!?,;:…"')]*$/i;
+// Append one recording (spoken or typed) to the open entry. A trailing "journal done" is stripped and closes it.
+function appendToOpen(text) {
+  const e = getOpen() || openNewEntry();
+  e.pending = "";
+  let t = (text || "").trim();
+  const done = DONE_RE.test(t);
+  if (done) t = t.replace(DONE_RE, "").replace(/[\s,;:]+$/, "").trim();
+  if (t) { appendText(e, t); e.lastActivity = now(); }
+  putEntry(e);
+  if (done) { finishEntry(); return true; }
+  return false;
+}
+// Reopen a saved entry: it keeps its original date; new recordings append to its tail (so after printed pages).
+function reopen(id) {
+  const open = localStorage.getItem(OPEN);
+  if (open && open !== id) closeOpen();
+  const e = getEntry(id); if (!e) return;
+  e.lastActivity = now(); putEntry(e);
+  localStorage.setItem(OPEN, id);
+  startRecording();
+}
+
+/* ============ Auto-close ============ */
+let autoClosedMsg = "";
+function checkAutoClose() {
+  if (recording) return;
+  const e = getOpen();
+  if (!e) return;
+  if (now() - e.lastActivity >= prefs.autoCloseHours * 36e5) {
+    const saved = closeOpen();
+    if (saved) autoClosedMsg = `Your entry from ${fmtShort(saved.ts)} was closed automatically after ${prefs.autoCloseHours} h and saved in your Journal.`;
+    if ($("#home").classList.contains("active") || $("#record").classList.contains("active")) go("home");
+  }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkAutoClose(); });
+setInterval(checkAutoClose, 60 * 1000);
+
+function renderHome() {
+  const e = getOpen();
+  $("#autoClosedNote").hidden = !autoClosedMsg;
+  $("#autoClosedNote").textContent = autoClosedMsg;
+  $("#draftCard").hidden = !e;
+  $("#talkLabel").textContent = e ? "Add more" : "Talk";
+  $("#homeHint").innerHTML = e ? "Tap to keep talking.<br>Say <b>“journal done”</b> when you're finished."
+                               : "Tap Talk, then speak.<br>Say <b>“journal done”</b> when your entry is finished.";
+  if (e) {
+    const closeAt = e.lastActivity + prefs.autoCloseHours * 36e5;
+    $("#draftStarted").textContent = fmtShort(e.ts) + " · " + fmtTime(e.ts);
+    $("#draftWords").textContent = `${wordCount(fullText(e))} words so far. It closes by itself at ${fmtTime(closeAt)} if you don't add more (after ${prefs.autoCloseHours} h).`;
+  }
+}
+
+/* ============ Speech ============ */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recording = false, finalText = "", usingFallback = false;
+
+function showFallback(msg) {
+  usingFallback = true;
+  $("#liveArea").hidden = true;
+  $("#fallbackArea").hidden = false;
+  $("#fallbackMsg").textContent = msg;
+  const ta = $("#fallbackText");
+  if (!ta.value && finalText) ta.value = finalText.trim();
+  ta.focus();
+}
+function startRecording() {
+  autoClosedMsg = "";
+  finalText = ""; usingFallback = false;
+  const e = getOpen() || openNewEntry();
+  const words = wordCount(fullText(e));
+  $("#soFar").hidden = !words;
+  $("#soFar").textContent = `Adding to your entry from ${fmtShort(e.ts)} · ${fmtTime(e.ts)} (${words} words so far).`;
+  $("#transcript").textContent = "";
+  $("#fallbackText").value = "";
+  $("#liveArea").hidden = false; $("#fallbackArea").hidden = true;
+  go("record");
+  if (!SR || new URLSearchParams(location.search).has("nospeech")) {
+    showFallback("Voice input isn't available in this browser. Type below, or use a sample entry. End with “journal done” (or tap Done) to finish.");
+    return;
+  }
+  try {
+    rec = new SR();
+    rec.continuous = true; rec.interimResults = true; rec.lang = "en-US";
+    rec.onresult = (ev) => {
+      let interim = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const r = ev.results[i];
+        if (r.isFinal) finalText += r[0].transcript.trim() + " ";
+        else interim += r[0].transcript;
+      }
+      const o = getOpen(); if (o) { o.pending = finalText; o.lastActivity = now(); putEntry(o); }  // survive a reload
+      if (DONE_RE.test(finalText.trim())) { stopRecognition(); appendToOpen(finalText); return; }  // spoken "journal done"
+      const box = $("#transcript");
+      box.textContent = finalText;
+      if (interim) { const s = document.createElement("span"); s.className = "interim"; s.textContent = interim; box.appendChild(s); }
+    };
+    rec.onerror = (ev) => {
+      if (ev.error === "no-speech" || ev.error === "aborted") return;
+      recording = false;
+      showFallback((ev.error === "not-allowed" || ev.error === "service-not-allowed")
+        ? "Microphone permission was denied, so I can't listen. You can type your entry below instead."
+        : "Voice input stopped working (" + ev.error + "). You can type your entry below instead.");
+    };
+    rec.onend = () => { if (recording && !usingFallback) { try { rec.start(); } catch (e) {} } };  // Chrome stops after silence
+    recording = true;
+    rec.start();
+  } catch (e) {
+    recording = false;
+    showFallback("Voice input couldn't start. You can type your entry below instead.");
+  }
+}
+function stopRecognition() { recording = false; if (rec) { try { rec.stop(); } catch (e) {} rec = null; } }
+const currentRecordingText = () => usingFallback ? $("#fallbackText").value : finalText + ($("#transcript .interim")?.textContent || "");
+
+$("#talkBtn").onclick = startRecording;
+$("#typeInstead").onclick = () => { stopRecognition(); showFallback("Type your entry below. End with “journal done” (or tap Done) to finish."); };
+$("#sampleBtn").onclick = () => { $("#fallbackText").value = SAMPLE; };
+$("#cancelBtn").onclick = () => {
+  stopRecognition();
+  const e = getOpen();
+  if (e) { e.pending = ""; if (fullText(e).trim()) putEntry(e); else { removeEntry(e.id); localStorage.removeItem(OPEN); } }
+  go("home");
+};
+$("#stopBtn").onclick = () => { stopRecognition(); if (!appendToOpen(currentRecordingText())) go("home"); };
+$("#recDone").onclick = () => { stopRecognition(); if (!appendToOpen(currentRecordingText())) finishEntry(); };
+$("#homeDone").onclick = finishEntry;
+
+/* ============ Page building, measuring & pagination ============ */
+// n = 1-based page number. scale shrinks the writing (only used for edited printed pages).
+function makePage(entry, w, h, n, text, scale) {
+  const p = document.createElement("div");
+  p.className = "jpage";
+  p.style.width = w; p.style.height = h;
+  if (scale && scale !== 1) p.style.setProperty("--fs", scale);
+  p.innerHTML = '<div class="jinner"><div class="jhead"></div><div class="jbody"><p class="jtext"></p></div></div>';
+  const head = p.querySelector(".jhead");
+  if (n === 1) { head.className = "jdate"; head.textContent = fmtDate(entry.ts) + " ·\u2002" + fmtTime(entry.ts); }
+  else { head.className = "jcont"; head.textContent = "continued ·\u2002" + fmtShort(entry.ts) + " ·\u2002page " + n; }  // no "of Y": printed numbers never go stale
+  p.querySelector(".jtext").textContent = text || "";
+  return p;
+}
+// A page in the hidden #measure box at exact mm size; returns fits(text).
+function measurer(entry, wmm, hmm, n, scale) {
+  const box = $("#measure"); box.innerHTML = "";
+  const p = makePage(entry, wmm + "mm", hmm + "mm", n, "", scale);
+  box.appendChild(p);
+  const body = p.querySelector(".jbody"), t = p.querySelector(".jtext");
+  return (text) => { t.textContent = text; return t.scrollHeight <= body.clientHeight + 1; };
+}
+// Split `text` into pages starting at page number firstN, on word boundaries.
+// Returns [{ text, s, e }] where s/e are character offsets into `text` (used when editing unprinted pages).
+function paginateText(entry, text, wmm, hmm, firstN) {
+  const toks = []; const re = /\S+|\s+/g; let m;
+  while ((m = re.exec(text))) toks.push({ t: m[0], pos: m.index });
+  const out = []; let start = 0;
+  while (start < toks.length) {
+    while (start < toks.length && /^\s+$/.test(toks[start].t)) start++;
+    if (start >= toks.length) break;
+    const fits = measurer(entry, wmm, hmm, firstN + out.length, 1);
+    const join = (n) => toks.slice(start, start + n).map(x => x.t).join("");
+    let lo = 1, hi = toks.length - start;
+    if (fits(join(hi))) lo = hi;
+    else while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); if (fits(join(mid))) lo = mid; else hi = mid - 1; }
+    const last = toks[start + lo - 1];
+    out.push({ text: join(lo).trimEnd(), s: toks[start].pos, e: last.pos + last.t.length });
+    start += lo;
+  }
+  return out;
+}
+// All pages of an entry: frozen (printed) pages first, then the unprinted tail, which always starts on a NEW page.
+const pageCache = new Map();
+function getPages(e) {
+  const [w, h] = sizeOf(e);
+  const key = JSON.stringify([e.id, e.ts, e.frozen, e.tail, w, h]);
+  if (pageCache.has(key)) return pageCache.get(key);
+  const pages = e.frozen.map((f, i) => ({ n: i + 1, text: f.text, scale: f.scale || 1, printed: true, changed: !!f.changed }));
+  paginateText(e, e.tail, w, h, pages.length + 1).forEach((c, i) =>
+    pages.push({ n: e.frozen.length + i + 1, text: c.text, s: c.s, e: c.e, scale: 1, printed: false }));
+  if (!pages.length) pages.push({ n: 1, text: "", s: 0, e: 0, scale: 1, printed: false });
+  pageCache.set(key, pages);
+  return pages;
+}
+
+// Screen copy of a page: laid out at the exact mm size (same line breaks as print), then scaled to pxW.
+const PX_PER_MM = 96 / 25.4;
+function scaledPage(entry, wmm, hmm, pxW, pg) {
+  const k = pxW / (wmm * PX_PER_MM);
+  const box = document.createElement("div");
+  box.className = "scalebox";
+  box.style.width = pxW + "px"; box.style.height = hmm * PX_PER_MM * k + "px";
+  const p = makePage(entry, wmm + "mm", hmm + "mm", pg.n, pg.text, pg.scale);
+  p.style.transform = "scale(" + k + ")"; p.style.transformOrigin = "0 0";
+  box.appendChild(p);
+  return box;
+}
+
+/* ============ Page view ============ */
+function renderPageScreen() {
+  const e = getCurrent();
+  if (!e) { go("journal"); return; }
+  $("#addToEntry").textContent = localStorage.getItem(OPEN) === e.id ? "＋ Keep talking" : "＋ Add to this entry";
+  const stage = $("#pageStage"); stage.innerHTML = "";
+  const [wmm, hmm] = sizeOf(e);
+  const w = Math.min(stage.clientWidth || 350, 360);
+  for (const pg of getPages(e)) {
+    const wrap = document.createElement("div"); wrap.className = "pagewrap";
+    const sp = scaledPage(e, wmm, hmm, w, pg);
+    sp.onclick = () => openEditor(pg.n);
+    sp.setAttribute("role", "button"); sp.setAttribute("aria-label", "Edit page " + pg.n);
+    wrap.appendChild(sp);
+    const n = document.createElement("p"); n.className = "pageno";
+    n.textContent = "Page " + pg.n + " ";
+    if (pg.printed) {
+      const b = document.createElement("span"); b.className = "badge" + (pg.changed ? " changed" : "");
+      b.textContent = pg.changed ? "Changed since printing" : "✓ Printed"; n.appendChild(b);
+    }
+    wrap.appendChild(n);
+    if (pg.changed) {
+      const rb = document.createElement("button"); rb.className = "big-btn reprint";
+      rb.textContent = "🖨 Reprint page " + pg.n;
+      rb.onclick = () => startPrint("page", pg.n);
+      wrap.appendChild(rb);
+    }
+    stage.appendChild(wrap);
+  }
+}
+$("#toPrint").onclick = () => go("print");
+$("#addToEntry").onclick = () => reopen(currentId);
+
+/* ============ Simple editor ============ */
+let editing = null;   // page number being edited
+function openEditor(n) {
+  const pg = getPages(getCurrent()).find(p => p.n === n);
+  editing = n;
+  $("#editorTitle").textContent = "Fix the words on page " + n + (pg.printed ? " (printed page)" : "");
+  $("#editorText").value = pg.text;
+  $("#editorWarn").hidden = true;
+  go("editor");
+  $("#editorText").focus();
+}
+$("#editorCancel").onclick = () => go("page");
+$("#editorSave").onclick = () => {
+  const e = getCurrent(), pg = getPages(e).find(p => p.n === editing);
+  const text = $("#editorText").value.trim();
+  if (text === pg.text) { go("page"); return; }
+  if (pg.printed) {
+    // A printed page keeps its own text. If it no longer fits, shrink its writing a little (min 80%).
+    const [w, h] = sizeOf(e);
+    const scale = [1, 0.95, 0.9, 0.85, 0.8].find(s => measurer(e, w, h, pg.n, s)(text));
+    if (!scale) {
+      $("#editorWarn").textContent = "This is too long to fit on printed page " + pg.n + ", even with smaller writing. Please shorten it a little.";
+      $("#editorWarn").hidden = false;
+      return;
+    }
+    const f = e.frozen[pg.n - 1];
+    f.text = text; f.scale = scale; f.changed = true;
+  } else {
+    e.tail = e.tail.slice(0, pg.s) + text + e.tail.slice(pg.e);   // unprinted pages simply re-paginate
+  }
+  putEntry(e);
+  go("page");
+};
+
+/* ============ Journal list ============ */
+function renderList() {
+  const ul = $("#entryList"); ul.innerHTML = "";
+  const openId = localStorage.getItem(OPEN);
+  const list = loadAll().filter(e => fullText(e).trim()).sort((a, b) => b.ts - a.ts);
+  if (!list.length) { ul.innerHTML = '<li class="empty">No pages yet.<br>Tap Talk to make your first one.</li>'; return; }
+  for (const e of list) {
+    const li = document.createElement("li"); li.className = "entry";
+    li.innerHTML = '<div class="entry-top"><button class="entry-open"><span class="entry-date"></span><span class="entry-first"></span></button></div>' +
+      '<div class="entry-actions"><button class="big-btn secondary add">＋ Add to this entry</button><button class="entry-del" aria-label="Delete entry">🗑<br>Delete</button></div>';
+    li.querySelector(".entry-date").textContent = fmtDate(e.ts);
+    li.querySelector(".entry-date").insertAdjacentHTML("beforeend", ' <span class="entry-time">' + fmtTime(e.ts) + "</span>");
+    if (e.id === openId) li.querySelector(".entry-date").insertAdjacentHTML("beforeend", '<span class="tag-open">open</span>');
+    li.querySelector(".entry-first").textContent = fullText(e).split(/(?<=[.!?])\s|\n/)[0];
+    li.querySelector(".entry-open").onclick = () => { currentId = e.id; go("page"); };
+    li.querySelector(".add").onclick = () => reopen(e.id);
+    li.querySelector(".entry-del").onclick = () => {
+      if (!confirm("Delete the entry from " + fmtDate(e.ts) + "?")) return;
+      if (e.id === openId) localStorage.removeItem(OPEN);
+      removeEntry(e.id); renderList();
+    };
+    ul.appendChild(li);
+  }
+}
+
+/* ============ Settings ============ */
+function renderSettings() {
+  document.querySelectorAll("#closeSeg button").forEach(b => b.classList.toggle("on", +b.dataset.h === prefs.autoCloseHours));
+}
+document.querySelectorAll("#closeSeg button").forEach(b => b.onclick = () => {
+  prefs.autoCloseHours = +b.dataset.h; savePrefs(); renderSettings(); checkAutoClose();
+});
+
+/* ============ Print ============ */
+document.querySelectorAll("#sizeSeg button").forEach(b => b.onclick = () => { prefs.sizeName = b.dataset.size; savePrefs(); renderPrint(); });
+document.querySelectorAll("#sheetSeg button").forEach(b => b.onclick = () => { prefs.sheet = b.dataset.sheet; savePrefs(); renderPrint(); });
+$("#cw").oninput = $("#ch").oninput = () => {
+  const c = (v, d) => Math.min(Math.max(parseFloat(v) || d, 50), 280);
+  prefs.custom = [c($("#cw").value, 120), c($("#ch").value, 180)]; savePrefs(); renderPrint(false);
+};
+function sizeLabel(s) { const k = Object.keys(SIZES).find(k => SIZES[k][0] === s[0] && SIZES[k][1] === s[1]); return (k ? k + " " : "") + `(${s[0]} × ${s[1]} mm)`; }
+
+function renderPrint(syncInputs = true) {
+  const e = getCurrent(); if (!e) return;
+  const [pw, ph] = sizeOf(e);
+  const [sw, sh, sname] = SHEETS[prefs.sheet];
+  const locked = !!e.size;
+  // size picker (locked once this entry has printed pages)
+  document.querySelectorAll("#sizeSeg button").forEach(b => {
+    const s = b.dataset.size;
+    const on = locked ? (s === "custom" ? !SIZES[Object.keys(SIZES).find(k => SIZES[k][0] === pw && SIZES[k][1] === ph)] : SIZES[s][0] === pw && SIZES[s][1] === ph) : s === prefs.sizeName;
+    b.classList.toggle("on", on); b.disabled = locked;
+  });
+  $("#sizeSeg").classList.toggle("locked", locked);   // locked: show only the note
+  $("#customBox").classList.toggle("show", !locked && prefs.sizeName === "custom");
+  if (syncInputs) { $("#cw").value = prefs.custom[0]; $("#ch").value = prefs.custom[1]; }
+  $("#lockNote").hidden = !locked;
+  $("#lockNote").textContent = `🔒 This entry was first printed at ${sizeLabel(e.size || [0, 0])}. Printed pages keep that size, so new pages print at the same size to match your notebook.`;
+  document.querySelectorAll("#sheetSeg button").forEach(b => b.classList.toggle("on", b.dataset.sheet === prefs.sheet));
+  $("#sizeWarn").textContent = (pw + 16 > sw || ph + 16 > sh) ? `That page (plus cut marks) doesn't fit on ${sname} paper. Try a smaller size.` : "";
+
+  const pages = getPages(e);
+  const fresh = pages.filter(p => !p.printed), changed = pages.filter(p => p.changed), anyPrinted = pages.some(p => p.printed);
+  $("#sheetCaption").textContent = `${pw} × ${ph} mm pages on ${sname}, one page per sheet, actual size · ${pages.length} page${pages.length > 1 ? "s" : ""}`;
+
+  // buttons
+  const box = $("#printButtons"); box.innerHTML = "";
+  const btn = (label, cls, fn, id) => { const b = document.createElement("button"); b.className = "big-btn " + cls; b.textContent = label; b.onclick = fn; if (id) b.id = id; box.appendChild(b); };
+  if (fresh.length) btn(anyPrinted ? `🖨 Print new pages (${range(fresh.map(p => p.n))})` : `🖨 Print (${range(fresh.map(p => p.n))})`, "", () => startPrint("new"), "printNew");
+  for (const c of changed) btn(`🖨 Reprint page ${c.n} (changed)`, fresh.length ? "secondary" : "", () => startPrint("page", c.n));
+  if (anyPrinted || !fresh.length) btn(`Print all (${pages.length} page${pages.length > 1 ? "s" : ""})`, "secondary", () => startPrint("all"), "printAll");
+
+  // on-screen preview: each sheet to scale, page centered, dashed cut line, status label
+  const prevs = $("#previews"); prevs.innerHTML = "";
+  const boxW = Math.min(prevs.clientWidth || 350, 300), k = boxW / sw;
+  for (const pg of pages) {
+    const sp = document.createElement("div"); sp.className = "sheet-preview";
+    sp.style.width = boxW + "px"; sp.style.height = sh * k + "px";
+    const p = scaledPage(e, pw, ph, pw * k, pg);
+    const left = (sw - pw) / 2 * k, top = (sh - ph) / 2 * k;
+    p.style.left = left + "px"; p.style.top = top + "px";
+    const cut = document.createElement("div"); cut.className = "cut";
+    Object.assign(cut.style, { left: left - 3 + "px", top: top - 3 + "px", width: pw * k + 6 + "px", height: ph * k + 6 + "px" });
+    sp.append(p, cut); prevs.appendChild(sp);
+    const lab = document.createElement("p"); lab.className = "sheet-label";
+    lab.textContent = "Page " + pg.n + " · " + (pg.changed ? "changed since printing" : pg.printed ? "printed" : "not printed yet");
+    prevs.appendChild(lab);
+  }
+}
+
+function addCropMarks(wrap, pw, ph) {   // corner marks: 6 mm long, starting 2 mm outside each corner
+  const L = 6, G = 2, T = 0.2;
+  for (const [x, y] of [[0,0],[1,0],[0,1],[1,1]]) {
+    const hz = document.createElement("div"); hz.className = "crop";
+    Object.assign(hz.style, { width: L + "mm", height: T + "mm", top: (y ? ph : 0) - T/2 + "mm", left: (x ? pw + G : -G - L) + "mm" });
+    const vt = document.createElement("div"); vt.className = "crop";
+    Object.assign(vt.style, { width: T + "mm", height: L + "mm", left: (x ? pw : 0) - T/2 + "mm", top: (y ? ph + G : -G - L) + "mm" });
+    wrap.append(hz, vt);
+  }
+}
+// Fill #printSheet with the given pages: one sheet each, page at exact mm size, centered, with crop marks.
+function buildPrintSheet(e, pages) {
+  const [pw, ph] = sizeOf(e), [sw, sh] = SHEETS[prefs.sheet];
+  $("#pageSizeStyle").textContent = `@page { size: ${sw}mm ${sh}mm; margin: 0; }`;
+  const ps = $("#printSheet"); ps.innerHTML = "";
+  for (const pg of pages) {
+    const sheet = document.createElement("div"); sheet.className = "psheet";
+    sheet.style.width = sw + "mm"; sheet.style.height = (sh - 0.5) + "mm";   // tiny slack avoids blank extra sheets
+    const wrap = document.createElement("div"); wrap.className = "pwrap";
+    wrap.style.width = pw + "mm"; wrap.style.height = ph + "mm"; wrap.style.top = "0.25mm";
+    wrap.appendChild(makePage(e, pw + "mm", ph + "mm", pg.n, pg.text, pg.scale));
+    addCropMarks(wrap, pw, ph);
+    sheet.appendChild(wrap); ps.appendChild(sheet);
+  }
+}
+
+// Printing: build the sheets, print, then mark the pages printed (afterprint, with a timer fallback).
+let job = null, lastUndo = null;
+function startPrint(mode, n) {
+  const e = getCurrent(), pages = getPages(e);
+  const sel = mode === "new" ? pages.filter(p => !p.printed) : mode === "all" ? pages : pages.filter(p => p.n === n);
+  if (!sel.length) return;
+  buildPrintSheet(e, sel);
+  job = { id: e.id, pages: sel, size: sizeOf(e), before: JSON.stringify(e), done: false };
+  window.print();                      // blocks in desktop browsers until the dialog closes
+  setTimeout(completePrint, 800);      // fallback where afterprint doesn't fire
+}
+window.addEventListener("afterprint", completePrint);
+function completePrint() {
+  if (!job || job.done) return;
+  job.done = true;
+  const e = getEntry(job.id); if (!e) return;
+  if (!e.size) e.size = job.size;                       // lock this entry's notebook size
+  const t = now();
+  let tailEnd = 0;
+  for (const pg of job.pages) {
+    if (pg.printed) { Object.assign(e.frozen[pg.n - 1], { printedAt: t, changed: false }); }
+    else { e.frozen.push({ text: pg.text, scale: 1, printedAt: t, changed: false }); tailEnd = Math.max(tailEnd, pg.e); }
+  }
+  if (tailEnd) e.tail = e.tail.slice(tailEnd).replace(/^\s+/, "");   // the rest stays unprinted and re-paginates
+  putEntry(e);
+  lastUndo = { id: e.id, before: job.before, label: `Marked ${range(job.pages.map(p => p.n))} as printed.` };
+  if ($("#print").classList.contains("active")) { renderPrint(); showUndo(); }
+}
+function showUndo() { $("#printedNote").hidden = !lastUndo; if (lastUndo) $("#printedNoteText").textContent = lastUndo.label; }
+$("#undoPrint").onclick = () => { if (!lastUndo) return; putEntry(JSON.parse(lastUndo.before)); lastUndo = null; showUndo(); renderPrint(); };
+window.addEventListener("beforeprint", () => {   // Ctrl/Cmd+P without our button: print all pages, don't mark anything
+  if ((!job || job.done) && getCurrent()) buildPrintSheet(getCurrent(), getPages(getCurrent()));
+});
+
+// Hooks for automated tests
+window.vj = { startPrint, completePrint, getPages: () => getPages(getCurrent()), getCurrent, getOpen, checkAutoClose };
+
+/* ============ Start ============ */
+(function recover() { const e = getOpen(); if (e && e.pending) { mergePending(e); putEntry(e); } })();
+checkAutoClose();
+document.fonts.load('20px "Hand"').then(() => { pageCache.clear(); renderHome(); });
+renderHome();
+</script>
+</body>
+</html>
